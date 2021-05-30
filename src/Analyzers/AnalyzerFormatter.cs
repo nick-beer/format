@@ -100,9 +100,12 @@ namespace Microsoft.CodeAnalysis.Tools.Analyzers
             if (formatOptions.SaveFormattedFiles)
             {
                 logger.LogTrace(Resources.Fixing_diagnostics);
-
-                // Run each analyzer individually and apply fixes if possible.
-                solution = await FixDiagnosticsAsync(solution, projectAnalyzers, allFixers, projectDiagnostics, formattablePaths, severity, fixableCompilerDiagnostics, logger, cancellationToken).ConfigureAwait(false);
+                var needsAnotherPass = true;
+                while (needsAnotherPass)
+                {
+                    // Run each analyzer individually and apply fixes if possible.
+                    (solution, needsAnotherPass) = await FixDiagnosticsAsync(solution, projectAnalyzers, allFixers, projectDiagnostics, formattablePaths, severity, fixableCompilerDiagnostics, logger, cancellationToken).ConfigureAwait(false);
+                }
 
                 var fixDiagnosticsMS = analysisStopwatch.ElapsedMilliseconds - projectDiagnosticsMS;
                 logger.LogTrace(Resources.Complete_in_0_ms, fixDiagnosticsMS);
@@ -167,7 +170,7 @@ namespace Microsoft.CodeAnalysis.Tools.Analyzers
             }
         }
 
-        private async Task<Solution> FixDiagnosticsAsync(
+        private async Task<(Solution Solution, bool NeedsAnotherPass)> FixDiagnosticsAsync(
             Solution solution,
             ImmutableDictionary<ProjectId, ImmutableArray<DiagnosticAnalyzer>> projectAnalyzers,
             ImmutableArray<CodeFixProvider> allFixers,
@@ -178,11 +181,12 @@ namespace Microsoft.CodeAnalysis.Tools.Analyzers
             ILogger logger,
             CancellationToken cancellationToken)
         {
+            var needsAnotherPass = false;
             // Determine the reported diagnostic ids
             var reportedDiagnostics = projectDiagnostics.SelectMany(kvp => kvp.Value).Distinct().ToImmutableArray();
             if (reportedDiagnostics.IsEmpty)
             {
-                return solution;
+                return (solution, needsAnotherPass);
             }
 
             var fixersById = CreateFixerMap(reportedDiagnostics, allFixers);
@@ -220,7 +224,10 @@ namespace Microsoft.CodeAnalysis.Tools.Analyzers
                 {
                     foreach (var codefix in codefixes)
                     {
-                        var changedSolution = await _applier.ApplyCodeFixesAsync(solution, result, codefix, diagnosticId, logger, cancellationToken).ConfigureAwait(false);
+                        var applicationResult = await _applier.ApplyCodeFixesAsync(solution, result, codefix, diagnosticId, logger, cancellationToken).ConfigureAwait(false);
+                        var changedSolution = applicationResult.Solution;
+                        needsAnotherPass |= applicationResult.NeedsAnotherPass;
+
                         if (changedSolution.GetChanges(solution).Any())
                         {
                             solution = changedSolution;
@@ -229,7 +236,7 @@ namespace Microsoft.CodeAnalysis.Tools.Analyzers
                 }
             }
 
-            return solution;
+            return (solution, needsAnotherPass);
 
             static ImmutableDictionary<string, ImmutableArray<CodeFixProvider>> CreateFixerMap(
                 ImmutableArray<string> diagnosticIds,

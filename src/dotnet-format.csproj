@@ -61,6 +61,8 @@
     <PackageReference Include="System.Security.Cryptography.ProtectedData" />
     <PackageReference Include="System.Security.Principal.Windows" />
     <PackageReference Include="Microsoft.Win32.Registry" />
+
+    <PackageReference Include="Moq"/>
   </ItemGroup>
 
   <ItemGroup>

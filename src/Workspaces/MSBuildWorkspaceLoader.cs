@@ -3,15 +3,50 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.Immutable;
+using System.Composition.Hosting;
+using System.Composition.Hosting.Core;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using Microsoft.CodeAnalysis.Host;
+using Microsoft.CodeAnalysis.Host.Mef;
 using Microsoft.CodeAnalysis.MSBuild;
 using Microsoft.Extensions.Logging;
+using Moq;
 
 namespace Microsoft.CodeAnalysis.Tools.Workspaces
 {
     internal static class MSBuildWorkspaceLoader
     {
+        private sealed class SimpleExportDescriptorProvider : ExportDescriptorProvider
+        {
+            private readonly object _service;
+
+            private readonly Dictionary<string, object> _metadata;
+
+            public SimpleExportDescriptorProvider(string serviceTypeName, object service)
+            {
+                _service = service;
+                _metadata = new Dictionary<string, object>
+                {
+                    ["ServiceType"] = serviceTypeName,
+                    ["Layer"] = ServiceLayer.Host
+                };
+            }
+
+            public override IEnumerable<ExportDescriptorPromise> GetExportDescriptors(CompositionContract contract, DependencyAccessor descriptorAccessor)
+            {
+                if (contract.ContractType == typeof(IWorkspaceService))
+                {
+                    return new[]
+                    {
+                        new ExportDescriptorPromise(contract, _service.ToString(), true, NoDependencies, _ => ExportDescriptor.Create((c, o) => _service, _metadata))
+                    };
+                }
+                return Enumerable.Empty<ExportDescriptorPromise>();
+            }
+        }
+
         // Used in tests for locking around MSBuild invocations
         internal static readonly SemaphoreSlim Guard = new SemaphoreSlim(1, 1);
 
@@ -31,7 +66,17 @@ namespace Microsoft.CodeAnalysis.Tools.Workspaces
                 { "AlwaysCompileMarkupFilesInSeparateDomain", bool.FalseString },
             };
 
-            var workspace = MSBuildWorkspace.Create(properties);
+            var t = typeof(TaggedText).Assembly.GetType("Microsoft.CodeAnalysis.CodeActions.WorkspaceServices.ISymbolRenamedCodeActionOperationFactoryWorkspaceService")!;
+            var constructor = typeof(Mock<>).MakeGenericType(t).GetConstructor(Type.EmptyTypes)!;
+            var instance = constructor.Invoke(null);
+
+            var configuration = new ContainerConfiguration()
+                .WithAssemblies(MSBuildMefHostServices.DefaultAssemblies)
+                .WithProvider(new SimpleExportDescriptorProvider(t.AssemblyQualifiedName!, ((Mock)instance).Object));
+
+            var hostServices = MefHostServices.Create(configuration.CreateContainer());
+
+            var workspace = MSBuildWorkspace.Create(properties, hostServices);
 
             Build.Framework.ILogger? binlog = null;
             if (binaryLogPath is not null)

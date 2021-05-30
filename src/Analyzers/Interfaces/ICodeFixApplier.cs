@@ -9,7 +9,7 @@ namespace Microsoft.CodeAnalysis.Tools.Analyzers
 {
     internal interface ICodeFixApplier
     {
-        Task<Solution> ApplyCodeFixesAsync(
+        Task<(Solution Solution, bool NeedsAnotherPass)> ApplyCodeFixesAsync(
             Solution solution,
             CodeAnalysisResult result,
             CodeFixProvider codefixes,

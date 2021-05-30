@@ -43,5 +43,7 @@
     <PackageVersion Include="System.Security.Cryptography.ProtectedData" Version="$(MicrosoftExtensionsVersion)"/>
     <PackageVersion Include="System.Security.Principal.Windows" Version="$(MicrosoftExtensionsVersion)"/>
     <PackageVersion Include="Microsoft.Win32.Registry" Version="$(MicrosoftExtensionsVersion)" />
+
+    <PackageVersion Include="Moq" Version="4.16.1" />
   </ItemGroup>
 </Project>
